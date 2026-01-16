@@ -53,7 +53,7 @@ def main():
     ]
 
     for perm, level in PERMISSIONS.items():
-        query_parts.append(f"permissions[{perm}]={level}")
+        query_parts.append(f"{perm}={level}")
 
     github_url = "https://github.com/settings/apps/new?" + "&".join(query_parts)
 
