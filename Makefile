@@ -23,7 +23,7 @@ deploy:
 
 # GitHub App setup
 setup-app:
-	node scripts/setup-github-app.js
+	node scripts/setup-github-app.cjs
 
 # Trigger benefit discovery from Reddit
 discover:
