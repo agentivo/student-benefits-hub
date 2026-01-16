@@ -3,11 +3,26 @@ import { benefits } from './data/benefits';
 import BenefitCard from './components/BenefitCard';
 import FilterBar from './components/FilterBar';
 
+const CACHE_KEY = 'github-stars-cache';
+const CACHE_TTL = 1000 * 60 * 60; // 1 hour
+
+type StarsCache = Record<string, { stars: number; ts: number }>;
+
+function getStarsCache(): StarsCache {
+  try {
+    return JSON.parse(localStorage.getItem(CACHE_KEY) || '{}');
+  } catch {
+    return {};
+  }
+}
+
 function App() {
   const [activeCategory, setActiveCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
+  const [starsMap, setStarsMap] = useState<Record<string, number>>({});
   const searchRef = useRef<HTMLInputElement>(null);
 
+  // Keyboard shortcut for search
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
@@ -20,6 +35,41 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
+  // Fetch GitHub stars for all repos
+  useEffect(() => {
+    const cache = getStarsCache();
+    const reposToFetch: string[] = [];
+    const initialStars: Record<string, number> = {};
+
+    benefits.forEach(b => {
+      if (!b.repo) return;
+      const cached = cache[b.repo];
+      if (cached && Date.now() - cached.ts < CACHE_TTL) {
+        initialStars[b.repo] = cached.stars;
+      } else {
+        reposToFetch.push(b.repo);
+      }
+    });
+
+    setStarsMap(initialStars);
+
+    // Fetch uncached repos
+    reposToFetch.forEach(repo => {
+      fetch(`https://api.github.com/repos/${repo}`)
+        .then(res => res.ok ? res.json() : null)
+        .then(data => {
+          if (data?.stargazers_count) {
+            const stars = data.stargazers_count;
+            setStarsMap(prev => ({ ...prev, [repo]: stars }));
+            const newCache = getStarsCache();
+            newCache[repo] = { stars, ts: Date.now() };
+            localStorage.setItem(CACHE_KEY, JSON.stringify(newCache));
+          }
+        })
+        .catch(() => {});
+    });
+  }, []);
+
   const filteredBenefits = useMemo(() => {
     return benefits
       .filter(benefit => {
@@ -29,12 +79,18 @@ function App() {
                              benefit.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
         return matchesCategory && matchesSearch;
       })
-      .sort((a, b) => b.popularity - a.popularity);
-  }, [activeCategory, searchQuery]);
+      .sort((a, b) => {
+        const starsA = a.repo ? (starsMap[a.repo] || 0) : 0;
+        const starsB = b.repo ? (starsMap[b.repo] || 0) : 0;
+        // Sort by stars first, then by popularity as tiebreaker
+        if (starsB !== starsA) return starsB - starsA;
+        return b.popularity - a.popularity;
+      });
+  }, [activeCategory, searchQuery, starsMap]);
 
   return (
     <div className="min-h-screen w-full py-12 px-4 sm:px-6 lg:px-8 relative overflow-hidden">
-      
+
       {/* Decorative background elements */}
       <div className="absolute top-0 left-1/4 w-96 h-96 bg-indigo-500/10 rounded-full blur-3xl -z-10 mix-blend-screen animate-pulse"></div>
       <div className="absolute bottom-0 right-1/4 w-96 h-96 bg-pink-500/10 rounded-full blur-3xl -z-10 mix-blend-screen animate-pulse delay-1000"></div>
@@ -43,7 +99,7 @@ function App() {
         {/* Header Section */}
         <header className="text-center mb-16 relative">
           <div className="inline-block mb-4 px-4 py-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 text-sm font-medium backdrop-blur-sm">
-            🚀 For Students & Educators
+            For Students & Educators
           </div>
           <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 tracking-tight">
             Student <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-pink-400">Benefits Hub</span>
@@ -51,7 +107,7 @@ function App() {
           <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
             A curated collection of exclusive offers, free tools, and resources to power your education.
           </p>
-          
+
           {/* Search Input */}
           <div className="relative max-w-xl mx-auto mb-10 group">
             <div className="absolute inset-y-0 left-0 pl-4 flex items-center pointer-events-none">
@@ -78,7 +134,7 @@ function App() {
             Found <span className="text-white">{filteredBenefits.length}</span> {filteredBenefits.length === 1 ? 'perk' : 'perks'}
           </span>
           {searchQuery && (
-            <button 
+            <button
               onClick={() => setSearchQuery('')}
               className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors flex items-center gap-1"
             >
@@ -92,7 +148,11 @@ function App() {
         {filteredBenefits.length > 0 ? (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-6">
             {filteredBenefits.map(benefit => (
-              <BenefitCard key={benefit.id} benefit={benefit} />
+              <BenefitCard
+                key={benefit.id}
+                benefit={benefit}
+                stars={benefit.repo ? starsMap[benefit.repo] : undefined}
+              />
             ))}
           </div>
         ) : (

@@ -36,7 +36,7 @@ export const benefits: Benefit[] = [
     name: "GitHub Copilot",
     category: "AI & Dev Tools",
     description: "AI pair programmer that helps you write code faster and with less work. Free for students.",
-    link: "https://github.com/features/copilot",
+    link: "https://github.com/education/students",
     tags: ["AI", "Coding", "GitHub"],
     popularity: 10
   },
@@ -45,7 +45,7 @@ export const benefits: Benefit[] = [
     name: "Google Gemini Pro",
     category: "AI & Dev Tools",
     description: "Access Google's advanced AI models through developer programs and student offers.",
-    link: "https://ai.google.dev/",
+    link: "https://aistudio.google.com/",
     tags: ["AI", "Google", "LLM"],
     popularity: 8
   },
@@ -91,7 +91,7 @@ export const benefits: Benefit[] = [
     name: "Google Cloud Credits",
     category: "Cloud & Hosting",
     description: "Get free credits for Google Cloud Platform to build and scale your projects.",
-    link: "https://cloud.google.com/edu",
+    link: "https://cloud.google.com/edu/students",
     tags: ["GCP", "Google", "Cloud"],
     popularity: 8
   },
@@ -257,7 +257,7 @@ export const benefits: Benefit[] = [
     name: "LinkedIn Learning",
     category: "Learning",
     description: "Access thousands of expert-led courses to develop your professional skills.",
-    link: "https://learning.linkedin.com/",
+    link: "https://www.linkedin.com/learning/subscription/higher-education",
     tags: ["Courses", "Professional", "Skills"],
     popularity: 8
   },
@@ -303,7 +303,7 @@ export const benefits: Benefit[] = [
     name: "Obsidian for Students",
     category: "Productivity",
     description: "Powerful knowledge base that works on top of a local folder of plain text Markdown files.",
-    link: "https://obsidian.md/",
+    link: "https://obsidian.md/pricing",
     tags: ["Notes", "Markdown", "PKM"],
     popularity: 9,
     repo: "obsidianmd/obsidian-releases"
