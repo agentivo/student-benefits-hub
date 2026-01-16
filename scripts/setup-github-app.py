@@ -9,7 +9,7 @@ import webbrowser
 from urllib.parse import quote
 
 
-def handle_sigint(sig, frame):
+def handle_sigint(_sig, _frame):
     print("\n\nCancelled.")
     sys.exit(0)
 
@@ -43,17 +43,13 @@ def main():
 
     input("Press Enter to open browser...")
 
-    # Build URL with query parameters (brackets unencoded)
     query_parts = [
         f"name={quote(APP_NAME)}",
         f"description={quote(DESCRIPTION)}",
         f"url={quote(HOMEPAGE, safe='')}",
         "webhook_active=false",
         "public=false",
-    ]
-
-    for perm, level in PERMISSIONS.items():
-        query_parts.append(f"{perm}={level}")
+    ] + [f"{perm}={level}" for perm, level in PERMISSIONS.items()]
 
     github_url = "https://github.com/settings/apps/new?" + "&".join(query_parts)
 
