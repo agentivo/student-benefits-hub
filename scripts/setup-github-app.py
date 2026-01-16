@@ -6,8 +6,10 @@ Creates a GitHub App via manifest flow.
 import json
 import subprocess
 import webbrowser
+import tempfile
+import os
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs, quote
+from urllib.parse import urlparse, parse_qs
 
 APP_NAME = "student-benefits-hub-models"
 HOMEPAGE = "https://agentivo.github.io/student-benefits-hub/"
@@ -104,53 +106,70 @@ def main():
 
     input("Press Enter to open browser...")
 
+    # Create HTML form that POSTs the manifest
     manifest = {**MANIFEST, "redirect_url": f"http://localhost:{PORT}"}
-    manifest_json = json.dumps(manifest)
-    url = f"https://github.com/settings/apps/new?manifest={quote(manifest_json)}"
+    manifest_json = json.dumps(manifest).replace('"', '&quot;')
 
-    print(f"\nWaiting for callback on http://localhost:{PORT}")
-    print("After clicking 'Create GitHub App', your browser will redirect here.\n")
-    print("If redirect fails, copy the URL from your browser's address bar")
-    print("and paste it here (or Ctrl+C to cancel):\n")
+    html = f"""<!DOCTYPE html>
+<html>
+<body>
+<form id="form" action="https://github.com/settings/apps/new" method="post">
+  <input type="hidden" name="manifest" value="{manifest_json}">
+</form>
+<script>document.getElementById('form').submit();</script>
+</body>
+</html>"""
 
-    # Start server in background thread
-    import threading
-    server = HTTPServer(("localhost", PORT), CallbackHandler)
-    server.timeout = 120
+    # Write to temp file and open in browser
+    fd, path = tempfile.mkstemp(suffix='.html')
+    try:
+        with os.fdopen(fd, 'w') as f:
+            f.write(html)
 
-    def serve():
-        server.handle_request()
+        webbrowser.open(f'file://{path}')
 
-    thread = threading.Thread(target=serve)
-    thread.daemon = True
-    thread.start()
+        print(f"\nWaiting for callback on http://localhost:{PORT}")
+        print("After clicking 'Create GitHub App', your browser will redirect here.\n")
+        print("If redirect fails, paste the URL from your browser here:\n")
 
-    webbrowser.open(url)
+        # Start server
+        import threading
+        server = HTTPServer(("localhost", PORT), CallbackHandler)
+        server.timeout = 300
 
-    # Wait for callback or manual input
-    while thread.is_alive():
-        try:
-            import select
-            import sys
-            if select.select([sys.stdin], [], [], 0.5)[0]:
-                manual_url = input().strip()
-                if "code=" in manual_url:
-                    code = parse_qs(urlparse(manual_url).query).get("code", [None])[0]
-                    if code:
-                        exchange_code(code)
-                        return
-        except:
-            pass
+        def serve():
+            server.handle_request()
 
-    if not CallbackHandler.app_data:
-        print("\nNo callback received. If you created the app manually:")
-        print("1. Go to https://github.com/settings/apps")
-        print("2. Click on your app")
-        print("3. Note the App ID")
-        print("4. Generate a private key")
-        print("5. Run:")
-        print("   gh secret set APP_ID")
-        print("   gh secret set APP_PRIVATE_KEY < private-key.pem")
+        thread = threading.Thread(target=serve)
+        thread.daemon = True
+        thread.start()
+
+        # Wait for callback or manual input
+        while thread.is_alive():
+            try:
+                import select
+                import sys
+                if select.select([sys.stdin], [], [], 0.5)[0]:
+                    manual_url = input().strip()
+                    if "code=" in manual_url:
+                        code = parse_qs(urlparse(manual_url).query).get("code", [None])[0]
+                        if code:
+                            exchange_code(code)
+                            return
+            except:
+                pass
+
+        if not CallbackHandler.app_data:
+            print("\nNo callback received. Manual setup:")
+            print("1. Go to https://github.com/settings/apps")
+            print("2. Click your app → copy App ID")
+            print("3. Generate private key")
+            print("4. Run:")
+            print("   gh secret set APP_ID")
+            print("   gh secret set APP_PRIVATE_KEY < private-key.pem")
+
+    finally:
+        os.unlink(path)
 
 
 if __name__ == "__main__":
