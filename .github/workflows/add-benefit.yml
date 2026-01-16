@@ -16,81 +16,129 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Parse benefit with AI
-        id: parse
+      - name: Process benefit submission
+        id: process
         uses: actions/github-script@v7
         env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MODELS_TOKEN: ${{ secrets.GH_MODELS_TOKEN }}
         with:
           result-encoding: string
           script: |
             const issue = context.payload.issue;
-            const issueBody = issue.body;
+            const issueBody = issue.body || '';
+            const issueTitle = issue.title || '';
+            const input = issueTitle + '\n' + issueBody;
 
-            const prompt = [
-              'You are parsing a student benefit submission. Extract structured data from this text and respond with ONLY valid JSON, no markdown or explanation.',
-              '',
-              'Text to parse:',
-              issueBody,
-              '',
-              'Respond with this exact JSON structure:',
-              '{',
-              '  "name": "Product/Service Name",',
-              '  "category": "one of: AI & Dev Tools, Cloud & Hosting, Learning, Design, Productivity, Lifestyle, Domains & Security, Other",',
-              '  "description": "Concise description of what students get (max 150 chars)",',
-              '  "link": "https://url-to-student-signup-page",',
-              '  "tags": ["Tag1", "Tag2", "Tag3"],',
-              '  "repo": "owner/repo or null if not applicable"',
-              '}',
-              '',
-              'If you cannot find a valid URL in the text, use the most likely student page URL based on the product name.',
-              'For category, choose the most appropriate one.',
-              'Keep description factual and specific about what students get.'
-            ].join('\n');
-
-            const response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
-              method: 'POST',
-              headers: {
-                'Authorization': 'Bearer ' + process.env.GH_TOKEN,
-                'Content-Type': 'application/json'
-              },
-              body: JSON.stringify({
-                model: 'gpt-4o-mini',
-                messages: [{ role: 'user', content: prompt }],
-                temperature: 0.3
-              })
-            });
-
-            if (!response.ok) {
-              const error = await response.text();
-              console.log('GitHub Models error:', error);
+            const token = process.env.MODELS_TOKEN;
+            if (!token) {
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: 'Could not parse the benefit description. Please try again with more details.'
+                body: 'Missing API token. Please add GH_MODELS_TOKEN secret to the repository.'
+              });
+              return '';
+            }
+
+            const prompt = [
+              'You are an assistant that processes student benefit submissions for a directory website.',
+              '',
+              'USER SUBMISSION:',
+              input,
+              '',
+              'YOUR TASK:',
+              '1. Identify what product/service the user is referring to',
+              '2. Determine if this product/service actually offers a student discount or free access',
+              '3. If valid, extract the structured data. If not valid or unclear, explain why.',
+              '',
+              'RESPOND WITH ONLY JSON in this exact format:',
+              '{',
+              '  "valid": true or false,',
+              '  "reason": "If not valid, explain why (e.g., no student program exists, unclear what product is meant, already in our list, etc.)",',
+              '  "benefit": {',
+              '    "name": "Official Product/Service Name",',
+              '    "category": "AI & Dev Tools | Cloud & Hosting | Learning | Design | Productivity | Lifestyle | Domains & Security | Other",',
+              '    "description": "What students get - be specific about discounts, free tiers, duration (max 120 chars)",',
+              '    "link": "Direct URL to the student signup/discount page",',
+              '    "tags": ["Tag1", "Tag2", "Tag3"],',
+              '    "repo": "owner/repo if open source, otherwise null"',
+              '  }',
+              '}',
+              '',
+              'IMPORTANT:',
+              '- Only mark as valid if you are confident the product has a real student program',
+              '- Use your knowledge to find the correct student discount URL',
+              '- Be specific in the description (e.g., "Free Pro plan for 1 year" not "Student discount available")',
+              '- If the submission is too vague to identify the product, mark as invalid'
+            ].join('\n');
+
+            let response;
+            try {
+              response = await fetch('https://models.inference.ai.azure.com/chat/completions', {
+                method: 'POST',
+                headers: {
+                  'Authorization': 'Bearer ' + token,
+                  'Content-Type': 'application/json'
+                },
+                body: JSON.stringify({
+                  model: 'gpt-4o',
+                  messages: [{ role: 'user', content: prompt }],
+                  temperature: 0.2
+                })
+              });
+            } catch (e) {
+              console.log('Fetch error:', e);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: 'Failed to connect to AI service. Please try again later.'
+              });
+              return '';
+            }
+
+            if (!response.ok) {
+              const error = await response.text();
+              console.log('API error:', error);
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: 'AI service error. Please check the GH_MODELS_TOKEN secret is valid.'
               });
               return '';
             }
 
             const data = await response.json();
             const aiResponse = data.choices[0].message.content;
+            console.log('AI response:', aiResponse);
 
-            let benefit;
+            let result;
             try {
               const jsonStr = aiResponse.replace(/```json\n?|\n?```/g, '').trim();
-              benefit = JSON.parse(jsonStr);
+              result = JSON.parse(jsonStr);
             } catch (e) {
-              console.log('Failed to parse AI response:', aiResponse);
+              console.log('Failed to parse:', aiResponse);
               await github.rest.issues.createComment({
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: 'Could not parse the AI response. Please try again.'
+                body: 'Could not process the submission. Please provide more details about the student benefit.'
               });
               return '';
             }
 
+            if (!result.valid) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: '**Cannot add this benefit:**\n\n' + result.reason + '\n\nPlease provide more details or submit a different benefit.'
+              });
+              return '';
+            }
+
+            const benefit = result.benefit;
             const id = benefit.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
 
             const fs = require('fs');
@@ -102,7 +150,7 @@ jobs:
                 owner: context.repo.owner,
                 repo: context.repo.repo,
                 issue_number: issue.number,
-                body: 'A benefit with ID "' + id + '" already exists.'
+                body: '**' + benefit.name + '** is already in our directory!'
               });
               return '';
             }
@@ -128,56 +176,68 @@ jobs:
               name: benefit.name,
               id: id,
               issueNumber: issue.number,
-              parsed: benefit
+              benefit: benefit
             });
 
       - name: Create Pull Request
-        if: steps.parse.outputs.result != ''
+        if: steps.process.outputs.result != ''
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          PARSE_RESULT: ${{ steps.parse.outputs.result }}
+          RESULT: ${{ steps.process.outputs.result }}
         run: |
-          BENEFIT_NAME=$(echo "$PARSE_RESULT" | jq -r '.name')
-          BENEFIT_ID=$(echo "$PARSE_RESULT" | jq -r '.id')
-          ISSUE_NUMBER=$(echo "$PARSE_RESULT" | jq -r '.issueNumber')
+          NAME=$(echo "$RESULT" | jq -r '.name')
+          ID=$(echo "$RESULT" | jq -r '.id')
+          ISSUE=$(echo "$RESULT" | jq -r '.issueNumber')
+          DESC=$(echo "$RESULT" | jq -r '.benefit.description')
+          LINK=$(echo "$RESULT" | jq -r '.benefit.link')
+          CATEGORY=$(echo "$RESULT" | jq -r '.benefit.category')
 
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
 
-          BRANCH="add-benefit-$BENEFIT_ID"
+          BRANCH="add-benefit-$ID"
           git checkout -b "$BRANCH"
           git add src/data/benefits.ts
-          git commit -m "Add benefit: $BENEFIT_NAME"
+          git commit -m "Add benefit: $NAME"
           git push origin "$BRANCH"
 
           gh pr create \
-            --title "Add benefit: $BENEFIT_NAME" \
-            --body "Adds **$BENEFIT_NAME** to the benefits directory.
+            --title "Add benefit: $NAME" \
+            --body "## $NAME
 
-          Closes #$ISSUE_NUMBER" \
+          **Category:** $CATEGORY
+          **Link:** $LINK
+
+          $DESC
+
+          ---
+          Closes #$ISSUE" \
             --base main \
             --head "$BRANCH"
 
       - name: Comment on issue
-        if: steps.parse.outputs.result != ''
+        if: steps.process.outputs.result != ''
         uses: actions/github-script@v7
         env:
-          PARSE_RESULT: ${{ steps.parse.outputs.result }}
+          RESULT: ${{ steps.process.outputs.result }}
         with:
           script: |
-            const result = JSON.parse(process.env.PARSE_RESULT);
-            const parsed = result.parsed;
+            const data = JSON.parse(process.env.RESULT);
+            const b = data.benefit;
             await github.rest.issues.createComment({
               owner: context.repo.owner,
               repo: context.repo.repo,
-              issue_number: result.issueNumber,
+              issue_number: data.issueNumber,
               body: [
-                'PR created to add **' + result.name + '**!',
+                'PR created to add **' + data.name + '**!',
                 '',
-                '**Parsed details:**',
-                '- Category: ' + parsed.category,
-                '- Link: ' + parsed.link,
-                '- Tags: ' + parsed.tags.join(', '),
+                '| Field | Value |',
+                '|-------|-------|',
+                '| Category | ' + b.category + ' |',
+                '| Link | ' + b.link + ' |',
+                '| Tags | ' + b.tags.join(', ') + ' |',
+                '',
+                '> ' + b.description,
                 '',
                 'The PR will be reviewed and merged shortly.'
               ].join('\n')
