@@ -7,7 +7,7 @@ import json
 import subprocess
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
-from urllib.parse import urlparse, parse_qs
+from urllib.parse import urlparse, parse_qs, quote
 
 APP_NAME = "student-benefits-hub-models"
 HOMEPAGE = "https://agentivo.github.io/student-benefits-hub/"
@@ -105,7 +105,8 @@ def main():
     input("Press Enter to open browser...")
 
     manifest = {**MANIFEST, "redirect_url": f"http://localhost:{PORT}"}
-    url = f"https://github.com/settings/apps/new?manifest={json.dumps(manifest)}"
+    manifest_json = json.dumps(manifest)
+    url = f"https://github.com/settings/apps/new?manifest={quote(manifest_json)}"
 
     print(f"\nWaiting for callback on http://localhost:{PORT}")
     print("After clicking 'Create GitHub App', your browser will redirect here.\n")
