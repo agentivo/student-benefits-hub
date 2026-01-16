@@ -98,10 +98,7 @@ function App() {
       <div className="max-w-7xl mx-auto">
         {/* Header Section */}
         <header className="text-center mb-16 relative">
-          <div className="inline-block mb-4 px-4 py-1.5 rounded-full border border-indigo-500/30 bg-indigo-500/10 text-indigo-300 text-sm font-medium backdrop-blur-sm">
-            For Students & Educators
-          </div>
-          <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 tracking-tight">
+                    <h1 className="text-5xl md:text-6xl font-extrabold text-white mb-6 tracking-tight">
             Student <span className="text-transparent bg-clip-text bg-gradient-to-r from-indigo-400 to-pink-400">Benefits Hub</span>
           </h1>
           <p className="text-xl text-slate-400 max-w-2xl mx-auto mb-10 leading-relaxed">
