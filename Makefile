@@ -1,4 +1,5 @@
-.PHONY: install dev build preview deploy setup-app discover test-issue lint clean
+.PHONY: help install dev build preview deploy setup-app discover test-issue lint clean
+.DEFAULT_GOAL := help
 
 # Development
 install:
