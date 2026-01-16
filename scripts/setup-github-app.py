@@ -5,10 +5,19 @@ Based on: https://docs.github.com/en/apps/sharing-github-apps/registering-a-gith
 """
 
 import json
+import signal
 import subprocess
+import sys
 import webbrowser
 from http.server import HTTPServer, BaseHTTPRequestHandler
 from urllib.parse import urlparse, parse_qs, quote
+
+
+def handle_sigint(sig, frame):
+    print("\n\nCancelled.")
+    sys.exit(0)
+
+signal.signal(signal.SIGINT, handle_sigint)
 
 APP_NAME = "student-benefits-hub-models"
 HOMEPAGE = "https://agentivo.github.io/student-benefits-hub/"
