@@ -1,0 +1,147 @@
+name: Add Benefit from Issue
+
+on:
+  issues:
+    types: [labeled]
+
+jobs:
+  create-pr:
+    if: github.event.label.name == 'new-benefit'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+      issues: write
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Parse issue and create benefit
+        uses: actions/github-script@v7
+        with:
+          script: |
+            const issue = context.payload.issue;
+            const body = issue.body;
+
+            // Parse form fields from issue body
+            const parseField = (label) => {
+              const regex = new RegExp(`### ${label}\\s*\\n\\s*([^\\n]+)`, 'i');
+              const match = body.match(regex);
+              return match ? match[1].trim() : '';
+            };
+
+            const parseTextarea = (label) => {
+              const regex = new RegExp(`### ${label}\\s*\\n\\s*([\\s\\S]*?)(?=\\n###|$)`, 'i');
+              const match = body.match(regex);
+              return match ? match[1].trim() : '';
+            };
+
+            const name = parseField('Benefit Name');
+            const category = parseField('Category');
+            const description = parseTextarea('Description');
+            const link = parseField('Link');
+            const tagsRaw = parseField('Tags');
+            const repo = parseField('GitHub Repo \\(optional\\)');
+
+            if (!name || !category || !description || !link || !tagsRaw) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: '❌ Could not parse all required fields. Please ensure all fields are filled out.'
+              });
+              return;
+            }
+
+            const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/(^-|-$)/g, '');
+            const tags = tagsRaw.split(',').map(t => t.trim()).filter(Boolean);
+
+            const benefit = {
+              id,
+              name,
+              category,
+              description,
+              link,
+              tags,
+              popularity: 5,
+              ...(repo && repo !== '_No response_' ? { repo } : {})
+            };
+
+            // Read current benefits file
+            const fs = require('fs');
+            const path = 'src/data/benefits.ts';
+            let content = fs.readFileSync(path, 'utf8');
+
+            // Check if benefit already exists
+            if (content.includes(`id: "${id}"`)) {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: `❌ A benefit with ID "${id}" already exists.`
+              });
+              return;
+            }
+
+            // Build the new benefit entry
+            let entry = `  {
+                id: "${benefit.id}",
+                name: "${benefit.name}",
+                category: "${benefit.category}",
+                description: "${benefit.description.replace(/"/g, '\\"')}",
+                link: "${benefit.link}",
+                tags: [${benefit.tags.map(t => `"${t}"`).join(', ')}],
+                popularity: ${benefit.popularity}`;
+
+            if (benefit.repo) {
+              entry += `,\n    repo: "${benefit.repo}"`;
+            }
+            entry += '\n  },';
+
+            // Insert before the last item
+            const insertPoint = content.lastIndexOf('  {');
+            content = content.slice(0, insertPoint) + entry + '\n' + content.slice(insertPoint);
+
+            fs.writeFileSync(path, content);
+
+            // Store for next steps
+            core.exportVariable('BENEFIT_NAME', name);
+            core.exportVariable('BENEFIT_ID', id);
+            core.exportVariable('ISSUE_NUMBER', issue.number);
+
+      - name: Create Pull Request
+        if: env.BENEFIT_NAME
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+
+          BRANCH="add-benefit-${{ env.BENEFIT_ID }}"
+          git checkout -b "$BRANCH"
+          git add src/data/benefits.ts
+          git commit -m "Add benefit: ${{ env.BENEFIT_NAME }}"
+          git push origin "$BRANCH"
+
+          gh pr create \
+            --title "Add benefit: ${{ env.BENEFIT_NAME }}" \
+            --body "Adds **${{ env.BENEFIT_NAME }}** to the benefits directory.
+
+          Closes #${{ env.ISSUE_NUMBER }}
+
+          ---
+          _Auto-generated from issue #${{ env.ISSUE_NUMBER }}_" \
+            --base main \
+            --head "$BRANCH"
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Comment on issue
+        if: env.BENEFIT_NAME
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.createComment({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: parseInt(process.env.ISSUE_NUMBER),
+              body: `✅ PR created to add **${process.env.BENEFIT_NAME}**. It will be reviewed and merged shortly.`
+            });

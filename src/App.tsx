@@ -21,13 +21,15 @@ function App() {
   }, []);
 
   const filteredBenefits = useMemo(() => {
-    return benefits.filter(benefit => {
-      const matchesCategory = activeCategory === 'All' || benefit.category === activeCategory;
-      const matchesSearch = benefit.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           benefit.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                           benefit.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
-      return matchesCategory && matchesSearch;
-    });
+    return benefits
+      .filter(benefit => {
+        const matchesCategory = activeCategory === 'All' || benefit.category === activeCategory;
+        const matchesSearch = benefit.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             benefit.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                             benefit.tags.some(tag => tag.toLowerCase().includes(searchQuery.toLowerCase()));
+        return matchesCategory && matchesSearch;
+      })
+      .sort((a, b) => b.popularity - a.popularity);
   }, [activeCategory, searchQuery]);
 
   return (
