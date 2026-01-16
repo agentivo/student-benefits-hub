@@ -1,4 +1,4 @@
-.PHONY: help install dev build preview deploy setup-app discover test-issue lint clean
+.PHONY: help install dev build preview deploy setup discover test-issue lint clean
 .DEFAULT_GOAL := help
 
 # Development
@@ -22,8 +22,8 @@ deploy:
 	git push origin main
 
 # GitHub App setup
-setup-app:
-	python3 scripts/setup-github-app.py
+setup:
+	python3 scripts/setup-models.py
 
 # Trigger benefit discovery from Reddit
 discover:
@@ -56,7 +56,7 @@ help:
 	@echo "  make build       - Build for production"
 	@echo "  make preview     - Preview production build"
 	@echo "  make deploy      - Push to main (triggers GitHub Pages deploy)"
-	@echo "  make setup-app   - Create GitHub App for Models API"
+	@echo "  make setup       - Setup GitHub Models access"
 	@echo "  make discover    - Trigger Reddit scraping workflow"
 	@echo "  make test-issue  - Create a test issue to trigger add-benefit workflow"
 	@echo "  make runs        - View recent workflow runs"
